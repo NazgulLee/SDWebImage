@@ -14,7 +14,7 @@
 #if SD_UIKIT || SD_WATCH
 static const size_t kBytesPerPixel = 4;
 static const size_t kBitsPerComponent = 8;
-
+// 同步解压缩图片
 + (nullable UIImage *)decodedImageWithImage:(nullable UIImage *)image {
     if (![UIImage shouldDecodeImage:image]) {
         return image;

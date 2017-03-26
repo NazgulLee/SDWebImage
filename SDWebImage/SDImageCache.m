@@ -17,7 +17,7 @@
 // See https://github.com/rs/SDWebImage/pull/1141 for discussion
 @interface AutoPurgeCache : NSCache
 @end
-
+// 注册了UIApplicationDidReceiveMemoryWarningNotification的NSCache
 @implementation AutoPurgeCache
 
 - (nonnull instancetype)init {
@@ -50,8 +50,8 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
 @interface SDImageCache ()
 
 #pragma mark - Properties
-@property (strong, nonatomic, nonnull) NSCache *memCache;
-@property (strong, nonatomic, nonnull) NSString *diskCachePath;
+@property (strong, nonatomic, nonnull) NSCache *memCache; //默认名为@"com.hackemist.SDWebImageCache.default"
+@property (strong, nonatomic, nonnull) NSString *diskCachePath; // /NSCachesDirectory/default/com.hackemist.SDWebImageCache.default
 @property (strong, nonatomic, nullable) NSMutableArray<NSString *> *customPaths;
 @property (SDDispatchQueueSetterSementics, nonatomic, nullable) dispatch_queue_t ioQueue;
 
@@ -78,7 +78,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
 }
 
 - (nonnull instancetype)initWithNamespace:(nonnull NSString *)ns {
-    NSString *path = [self makeDiskCachePath:ns];
+    NSString *path = [self makeDiskCachePath:ns]; // 返回NSCachesDirectory路径附加ns
     return [self initWithNamespace:ns diskCacheDirectory:path];
 }
 
@@ -93,7 +93,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
         _config = [[SDImageCacheConfig alloc] init];
         
         // Init the memory cache
-        _memCache = [[AutoPurgeCache alloc] init];
+        _memCache = [[AutoPurgeCache alloc] init];// 注册了UIApplicationDidReceiveMemoryWarningNotification的NSCache
         _memCache.name = fullNamespace;
 
         // Init the disk cache
@@ -110,16 +110,17 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
 
 #if SD_UIKIT
         // Subscribe to app events
+        // 内存快用完时清理内存缓存
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(clearMemory)
                                                      name:UIApplicationDidReceiveMemoryWarningNotification
                                                    object:nil];
-
+        // 用户强制关闭应用时清理磁盘缓存
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(deleteOldFiles)
                                                      name:UIApplicationWillTerminateNotification
                                                    object:nil];
-
+        // 一进入后台就清理磁盘缓存
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(backgroundDeleteOldFiles)
                                                      name:UIApplicationDidEnterBackgroundNotification
@@ -134,7 +135,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     SDDispatchQueueRelease(_ioQueue);
 }
-
+// 检查当前所在queue是否是self.ioQueue
 - (void)checkIfQueueIsIOQueue {
     const char *currentQueueLabel = dispatch_queue_get_label(DISPATCH_CURRENT_QUEUE_LABEL);
     const char *ioQueueLabel = dispatch_queue_get_label(self.ioQueue);
@@ -159,17 +160,17 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
     NSString *filename = [self cachedFileNameForKey:key];
     return [path stringByAppendingPathComponent:filename];
 }
-
+//key对应的文件在默认缓存文件夹下的文件路径，/NSCachesDirectory/default/com.hackemist.SDWebImageCache.default／MD5.extension（可能没有.extension）
 - (nullable NSString *)defaultCachePathForKey:(nullable NSString *)key {
     return [self cachePathForKey:key inPath:self.diskCachePath];
 }
-
+// key用MD5加密的结果加格式作为文件名，MD5.extension（可能没有.extension）
 - (nullable NSString *)cachedFileNameForKey:(nullable NSString *)key {
     const char *str = key.UTF8String;
     if (str == NULL) {
         str = "";
     }
-    unsigned char r[CC_MD5_DIGEST_LENGTH];
+    unsigned char r[CC_MD5_DIGEST_LENGTH];// CC_MD5_DIGEST_LENGTH定义为16
     CC_MD5(str, (CC_LONG)strlen(str), r);
     NSString *filename = [NSString stringWithFormat:@"%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%@",
                           r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10],
@@ -177,7 +178,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
 
     return filename;
 }
-
+// 返回/NSCachesDirectory/fullNamespace
 - (nullable NSString *)makeDiskCachePath:(nonnull NSString*)fullNamespace {
     NSArray<NSString *> *paths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
     return [paths[0] stringByAppendingPathComponent:fullNamespace];
@@ -197,7 +198,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
         completion:(nullable SDWebImageNoParamsBlock)completionBlock {
     [self storeImage:image imageData:nil forKey:key toDisk:toDisk completion:completionBlock];
 }
-
+// 异步在self.ioQueue上保存为/NSCachesDirectory/default/com.hackemist.SDWebImageCache.default／MD5.extension，若设置保存到内存缓存，则也保存一份到self.memCache
 - (void)storeImage:(nullable UIImage *)image
          imageData:(nullable NSData *)imageData
             forKey:(nullable NSString *)key
@@ -237,7 +238,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
         }
     }
 }
-
+// 同步在self.ioQueue上保存为/NSCachesDirectory/default/com.hackemist.SDWebImageCache.default／MD5.extension
 - (void)storeImageDataToDisk:(nullable NSData *)imageData forKey:(nullable NSString *)key {
     if (!imageData || !key) {
         return;
@@ -307,7 +308,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
     image = [self imageFromDiskCacheForKey:key];
     return image;
 }
-
+// 先在默认文件夹中找，再到自定义的文件夹中找
 - (nullable NSData *)diskImageDataBySearchingAllPathsForKey:(nullable NSString *)key {
     NSString *defaultPath = [self defaultCachePathForKey:key];
     NSData *data = [NSData dataWithContentsOfFile:defaultPath];
@@ -340,7 +341,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
 
     return nil;
 }
-
+// 根据key在磁盘缓存中找到imageData，然后将其转化为image，调整scale，根据需要解压，返回
 - (nullable UIImage *)diskImageForKey:(nullable NSString *)key {
     NSData *data = [self diskImageDataBySearchingAllPathsForKey:key];
     if (data) {
@@ -355,11 +356,11 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
         return nil;
     }
 }
-
+// 从key中获取image的scale信息（是否包含"@2x."/@"3x."），然后将image转化为对应scale的image
 - (nullable UIImage *)scaledImageForKey:(nullable NSString *)key image:(nullable UIImage *)image {
     return SDScaledImageForKey(key, image);
 }
-
+// 先在内存缓存中中查找，若找到了，同步执行completedBlock；若未找到，则返回一个operation，异步到self.ioQueue中去磁盘缓存查询，找到后，在内存缓存中缓存，然后返回到mainQueue中执行completedBlock
 - (nullable NSOperation *)queryCacheOperationForKey:(nullable NSString *)key done:(nullable SDCacheQueryCompletedBlock)doneBlock {
     if (!key) {
         if (doneBlock) {
@@ -412,7 +413,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
 - (void)removeImageForKey:(nullable NSString *)key withCompletion:(nullable SDWebImageNoParamsBlock)completion {
     [self removeImageForKey:key fromDisk:YES withCompletion:completion];
 }
-
+// 内存缓存中有image，移除，然后异步到从磁盘缓存中移除image，移除后再回到主线程执行completionBlock
 - (void)removeImageForKey:(nullable NSString *)key fromDisk:(BOOL)fromDisk withCompletion:(nullable SDWebImageNoParamsBlock)completion {
     if (key == nil) {
         return;
@@ -461,7 +462,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
 - (void)clearMemory {
     [self.memCache removeAllObjects];
 }
-
+//直接将整个/NSCachesDirectory/default/com.hackemist.SDWebImageCache.default文件夹删掉，然后建一个空的文件夹
 - (void)clearDiskOnCompletion:(nullable SDWebImageNoParamsBlock)completion {
     dispatch_async(self.ioQueue, ^{
         [_fileManager removeItemAtPath:self.diskCachePath error:nil];
@@ -481,7 +482,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
 - (void)deleteOldFiles {
     [self deleteOldFilesWithCompletionBlock:nil];
 }
-
+// 删除磁盘缓存中的过期文件，若剩下的文件总大小比self.config.maxCacheSize大，则按修改日期从远到近删除文件直到总大小小于self.config.maxCacheSize的一半
 - (void)deleteOldFilesWithCompletionBlock:(nullable SDWebImageNoParamsBlock)completionBlock {
     dispatch_async(self.ioQueue, ^{
         NSURL *diskCacheURL = [NSURL fileURLWithPath:self.diskCachePath isDirectory:YES];
@@ -541,6 +542,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
                                                                      }];
 
             // Delete files until we fall below our desired cache size.
+            // for in 在NSArray中的枚举顺序是按index枚举，所以老文件在前
             for (NSURL *fileURL in sortedFiles) {
                 if ([_fileManager removeItemAtURL:fileURL error:nil]) {
                     NSDictionary<NSString *, id> *resourceValues = cacheFiles[fileURL];
@@ -562,6 +564,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
 }
 
 #if SD_UIKIT
+// 在后台开启任务，做删除磁盘缓存工作
 - (void)backgroundDeleteOldFiles {
     Class UIApplicationClass = NSClassFromString(@"UIApplication");
     if(!UIApplicationClass || ![UIApplicationClass respondsToSelector:@selector(sharedApplication)]) {
@@ -584,7 +587,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
 #endif
 
 #pragma mark - Cache Info
-
+// 获取self.diskCachePath 文件夹中缓存的图片总大小
 - (NSUInteger)getSize {
     __block NSUInteger size = 0;
     dispatch_sync(self.ioQueue, ^{
@@ -597,7 +600,7 @@ FOUNDATION_STATIC_INLINE NSUInteger SDCacheCostForImage(UIImage *image) {
     });
     return size;
 }
-
+// 获取self.diskCachePath 文件夹中缓存的图片数量
 - (NSUInteger)getDiskCount {
     __block NSUInteger count = 0;
     dispatch_sync(self.ioQueue, ^{

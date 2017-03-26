@@ -81,7 +81,7 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
 - (void)dealloc {
     SDDispatchQueueRelease(_barrierQueue);
 }
-
+// 把两个handler打包放到一个字典中，将字典添加到self.callbackBlocks
 - (nullable id)addHandlersForProgress:(nullable SDWebImageDownloaderProgressBlock)progressBlock
                             completed:(nullable SDWebImageDownloaderCompletedBlock)completedBlock {
     SDCallbacksDictionary *callbacks = [NSMutableDictionary new];
@@ -92,17 +92,17 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
     });
     return callbacks;
 }
-
+// 根据key返回self.callbackBlocks中所有的progressBlock或者completedBlock
 - (nullable NSArray<id> *)callbacksForKey:(NSString *)key {
     __block NSMutableArray<id> *callbacks = nil;
     dispatch_sync(self.barrierQueue, ^{
         // We need to remove [NSNull null] because there might not always be a progress block for each callback
-        callbacks = [[self.callbackBlocks valueForKey:key] mutableCopy];
+        callbacks = [[self.callbackBlocks valueForKey:key] mutableCopy];//KVC，对数组各对象中应用valueForKey，取key对应的value放在一起组成新的数组返回
         [callbacks removeObjectIdenticalTo:[NSNull null]];
     });
-    return [callbacks copy];    // strip mutability here
+    return [callbacks copy];     // strip mutability here
 }
-
+// token包含了一对progressBlock和completedBlock，因为同一url可能会有多个下载请求，每个请求有一对progressBlock和completedBlock，downloaderOperation把每对progressBlock和completedBlock保存在self.callbackBlocks中，每次取消一个请求就把这个请求对应的progressBlock和completedBlock对从self.callbackBlocks中删除，若self.callbackBlocks为空，则取消对这个url的下载
 - (BOOL)cancel:(nullable id)token {
     __block BOOL shouldCancel = NO;
     dispatch_barrier_sync(self.barrierQueue, ^{
@@ -153,6 +153,7 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
              *  We send nil as delegate queue so that the session creates a serial operation queue for performing all delegate
              *  method calls and completion handler calls.
              */
+            // 参数中delegateQueue必须为一个serialQueue。若指定nil，则系统为你创建一个serialQueue。session会强引用它的delegate，所以这里会造成强引用循环，必须在恰当的时候显式invalidate这个session，否则会造成内存泄漏
             self.ownedSession = [NSURLSession sessionWithConfiguration:sessionConfig
                                                               delegate:self
                                                          delegateQueue:nil];
@@ -166,11 +167,12 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
     [self.dataTask resume];
 
     if (self.dataTask) {
+        // 遍历此url的progressBlocks，执行之
         for (SDWebImageDownloaderProgressBlock progressBlock in [self callbacksForKey:kProgressCallbackKey]) {
             progressBlock(0, NSURLResponseUnknownLength, self.request.URL);
         }
         dispatch_async(dispatch_get_main_queue(), ^{
-            [[NSNotificationCenter defaultCenter] postNotificationName:SDWebImageDownloadStartNotification object:self];
+            [[NSNotificationCenter defaultCenter] postNotificationName:SDWebImageDownloadStartNotification object:self];// 通知网络活动指示器
         });
     } else {
         [self callCompletionBlocksWithError:[NSError errorWithDomain:NSURLErrorDomain code:0 userInfo:@{NSLocalizedDescriptionKey : @"Connection can't be initialized"}]];
@@ -188,13 +190,13 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
     }
 #endif
 }
-
+//取消下载dataTask，设置operation的executing和finished状态，重置下载相关属性
 - (void)cancel {
     @synchronized (self) {
         [self cancelInternal];
     }
 }
-
+//取消下载dataTask，设置operation的executing为NO，finished为YES，重置下载相关属性
 - (void)cancelInternal {
     if (self.isFinished) return;
     [super cancel];
@@ -213,13 +215,13 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
 
     [self reset];
 }
-
+// NSOperation状态相关
 - (void)done {
     self.finished = YES;
     self.executing = NO;
     [self reset];
 }
-
+// 重置下载相关属性
 - (void)reset {
     dispatch_barrier_async(self.barrierQueue, ^{
         [self.callbackBlocks removeAllObjects];
@@ -249,13 +251,14 @@ typedef NSMutableDictionary<NSString *, id> SDCallbacksDictionary;
 }
 
 #pragma mark NSURLSessionDataDelegate
-
+// 从服务器收到了初始回复，根据statusCode选择继续下载、转而去缓存中查找还是出错取消下载任务
 - (void)URLSession:(NSURLSession *)session
           dataTask:(NSURLSessionDataTask *)dataTask
 didReceiveResponse:(NSURLResponse *)response
  completionHandler:(void (^)(NSURLSessionResponseDisposition disposition))completionHandler {
     
     //'304 Not Modified' is an exceptional one
+    // 如果response没有statusCode或者statusCode小于400但不为304，则继续下载。statusCode为1**提供信息，2**正常，3**重定向，4**客户端错误，5**服务器错误
     if (![response respondsToSelector:@selector(statusCode)] || (((NSHTTPURLResponse *)response).statusCode < 400 && ((NSHTTPURLResponse *)response).statusCode != 304)) {
         NSInteger expected = response.expectedContentLength > 0 ? (NSInteger)response.expectedContentLength : 0;
         self.expectedSize = expected;
@@ -274,9 +277,9 @@ didReceiveResponse:(NSURLResponse *)response
         
         //This is the case when server returns '304 Not Modified'. It means that remote image is not changed.
         //In case of 304 we need just cancel the operation and return cached image from the cache.
-        if (code == 304) {
-            [self cancelInternal];
-        } else {
+        if (code == 304) {//304表示该url在服务器端的内容没改变，因此只需从缓存中获取image
+            [self cancelInternal];//取消dataTask，终止operation，重置自己
+        } else {// statusCode大于等于400，表示出错了，取消下载任务
             [self.dataTask cancel];
         }
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -292,10 +295,10 @@ didReceiveResponse:(NSURLResponse *)response
         completionHandler(NSURLSessionResponseAllow);
     }
 }
-
+// 若要求边下载边显示，则把已经获取到的部分数据绘制成图片
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)dataTask didReceiveData:(NSData *)data {
     [self.imageData appendData:data];
-
+    // 若要求边下载边显示
     if ((self.options & SDWebImageDownloaderProgressiveDownload) && self.expectedSize > 0) {
         // The following code is from http://www.cocoaintheshell.com/2011/05/progressive-images-download-imageio/
         // Thanks to the author @Nyx0uf
@@ -305,12 +308,14 @@ didReceiveResponse:(NSURLResponse *)response
 
         // Update the data source, we must pass ALL the data, not just the new bytes
         CGImageSourceRef imageSource = CGImageSourceCreateWithData((__bridge CFDataRef)self.imageData, NULL);
-
+        // 若width和height未初始化
         if (width + height == 0) {
+            // 获取imageSource中第一张image的属性，从中获取图片完整时的宽、高和朝向
             CFDictionaryRef properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, NULL);
             if (properties) {
                 NSInteger orientationValue = -1;
                 CFTypeRef val = CFDictionaryGetValue(properties, kCGImagePropertyPixelHeight);
+                // 从val中取值放入height中
                 if (val) CFNumberGetValue(val, kCFNumberLongType, &height);
                 val = CFDictionaryGetValue(properties, kCGImagePropertyPixelWidth);
                 if (val) CFNumberGetValue(val, kCFNumberLongType, &width);
@@ -335,6 +340,7 @@ didReceiveResponse:(NSURLResponse *)response
 #if SD_UIKIT || SD_WATCH
             // Workaround for iOS anamorphic image
             if (partialImageRef) {
+                // 获取得到的部分图片的高度，以图片原本的宽为宽，绘制这个不完整的图片
                 const size_t partialHeight = CGImageGetHeight(partialImageRef);
                 CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
                 CGContextRef bmContext = CGBitmapContextCreate(NULL, width, height, 8, width * 4, colorSpace, kCGBitmapByteOrderDefault | kCGImageAlphaPremultipliedFirst);
@@ -359,27 +365,28 @@ didReceiveResponse:(NSURLResponse *)response
                 UIImage *image = [[UIImage alloc] initWithCGImage:partialImageRef size:NSZeroSize];
 #endif
                 NSString *key = [[SDWebImageManager sharedManager] cacheKeyForURL:self.request.URL];
+                // 转换为图片url中指明的scale
                 UIImage *scaledImage = [self scaledImageForKey:key image:image];
-                if (self.shouldDecompressImages) {
+                if (self.shouldDecompressImages) {// 如果指明下载后解压缩，解压缩
                     image = [UIImage decodedImageWithImage:scaledImage];
                 }
                 else {
                     image = scaledImage;
                 }
                 CGImageRelease(partialImageRef);
-                
+                // finished参数为NO，执行此ur所有的completionBlocks
                 [self callCompletionBlocksWithImage:image imageData:nil error:nil finished:NO];
             }
         }
-
+        
         CFRelease(imageSource);
     }
-
+    //执行此ur所有的progressBlocks
     for (SDWebImageDownloaderProgressBlock progressBlock in [self callbacksForKey:kProgressCallbackKey]) {
         progressBlock(self.imageData.length, self.expectedSize, self.request.URL);
     }
 }
-
+// completionHandler会把proposedResponse缓存起来，若你不想缓存，则将cachedResponse设为nil
 - (void)URLSession:(NSURLSession *)session
           dataTask:(NSURLSessionDataTask *)dataTask
  willCacheResponse:(NSCachedURLResponse *)proposedResponse
@@ -397,7 +404,7 @@ didReceiveResponse:(NSURLResponse *)response
 }
 
 #pragma mark NSURLSessionTaskDelegate
-
+// 下载完成
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
     @synchronized(self) {
         self.dataTask = nil;
@@ -425,7 +432,8 @@ didReceiveResponse:(NSURLResponse *)response
                 image = [self scaledImageForKey:key image:image];
                 
                 // Do not force decoding animated GIFs
-                if (!image.images) {
+                // 静态图片image.images为nil
+                if (!image.images) {// 静态图片
                     if (self.shouldDecompressImages) {
                         if (self.options & SDWebImageDownloaderScaleDownLargeImages) {
 #if SD_UIKIT || SD_WATCH
@@ -449,7 +457,7 @@ didReceiveResponse:(NSURLResponse *)response
     }
     [self done];
 }
-
+// 需要验证身份
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential *credential))completionHandler {
     
     NSURLSessionAuthChallengeDisposition disposition = NSURLSessionAuthChallengePerformDefaultHandling;

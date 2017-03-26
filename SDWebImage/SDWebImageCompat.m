@@ -11,7 +11,7 @@
 #if !__has_feature(objc_arc)
 #error SDWebImage is ARC only. Either turn on ARC for the project or use -fobjc-arc flag
 #endif
-
+// 从key中获取image的scale是@2x还是@3x
 inline UIImage *SDScaledImageForKey(NSString * _Nullable key, UIImage * _Nullable image) {
     if (!image) {
         return nil;
@@ -20,7 +20,7 @@ inline UIImage *SDScaledImageForKey(NSString * _Nullable key, UIImage * _Nullabl
 #if SD_MAC
     return image;
 #elif SD_UIKIT || SD_WATCH
-    if ((image.images).count > 0) {
+    if ((image.images).count > 0) {// 是GIF动图
         NSMutableArray<UIImage *> *scaledImages = [NSMutableArray array];
 
         for (UIImage *tempImage in image.images) {
@@ -29,7 +29,7 @@ inline UIImage *SDScaledImageForKey(NSString * _Nullable key, UIImage * _Nullabl
 
         return [UIImage animatedImageWithImages:scaledImages duration:image.duration];
     }
-    else {
+    else {// 是静态图
 #if SD_WATCH
         if ([[WKInterfaceDevice currentDevice] respondsToSelector:@selector(screenScale)]) {
 #elif SD_UIKIT

@@ -16,7 +16,7 @@
 #endif
 
 @implementation UIImage (MultiFormat)
-
+// 先从imageData中获取image的种类信息，再转化为相应的image
 + (nullable UIImage *)sd_imageWithData:(nullable NSData *)data {
     if (!data) {
         return nil;
@@ -50,6 +50,7 @@
 }
 
 #if SD_UIKIT || SD_WATCH
+// 从imageData中获取image的orientation
 +(UIImageOrientation)sd_imageOrientationFromImageData:(nonnull NSData *)imageData {
     UIImageOrientation result = UIImageOrientationUp;
     CGImageSourceRef imageSource = CGImageSourceCreateWithData((__bridge CFDataRef)imageData, NULL);
@@ -119,7 +120,7 @@
 - (nullable NSData *)sd_imageData {
     return [self sd_imageDataAsFormat:SDImageFormatUndefined];
 }
-
+// 将本image转化为对应imageFormat的imageData
 - (nullable NSData *)sd_imageDataAsFormat:(SDImageFormat)imageFormat {
     NSData *imageData = nil;
     if (self) {

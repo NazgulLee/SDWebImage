@@ -14,7 +14,7 @@
 
 @property (assign, nonatomic, getter = isCancelled) BOOL cancelled;
 @property (copy, nonatomic, nullable) SDWebImageNoParamsBlock cancelBlock;
-@property (strong, nonatomic, nullable) NSOperation *cacheOperation;
+@property (strong, nonatomic, nullable) NSOperation *cacheOperation;//到缓存中查找的operation
 
 @end
 
@@ -53,7 +53,7 @@
     }
     return self;
 }
-
+// 若cacheKeyFilter不为空，则返回url用其过滤后的字符串，否则返回url的绝对字符串
 - (nullable NSString *)cacheKeyForURL:(nullable NSURL *)url {
     if (!url) {
         return @"";
@@ -65,7 +65,7 @@
         return url.absoluteString;
     }
 }
-
+// 先去内存缓存中找，再去磁盘缓存中找
 - (void)cachedImageExistsForURL:(nullable NSURL *)url
                      completion:(nullable SDWebImageCheckCacheCompletionBlock)completionBlock {
     NSString *key = [self cacheKeyForURL:url];
@@ -89,7 +89,7 @@
         }
     }];
 }
-
+// 只去磁盘缓存中找
 - (void)diskImageExistsForURL:(nullable NSURL *)url
                    completion:(nullable SDWebImageCheckCacheCompletionBlock)completionBlock {
     NSString *key = [self cacheKeyForURL:url];
@@ -121,7 +121,7 @@
     }
 
     __block SDWebImageCombinedOperation *operation = [SDWebImageCombinedOperation new];
-    __weak SDWebImageCombinedOperation *weakOperation = operation;
+    __weak SDWebImageCombinedOperation *weakOperation = operation; // 防止block循环引用
 
     BOOL isFailedUrl = NO;
     if (url) {
@@ -129,7 +129,7 @@
             isFailedUrl = [self.failedURLs containsObject:url];
         }
     }
-
+    // url为failedUrl且options不retryFailed，或者url为空，直接执行completedBlock
     if (url.absoluteString.length == 0 || (!(options & SDWebImageRetryFailed) && isFailedUrl)) {
         [self callCompletionBlockForOperation:operation completion:completedBlock error:[NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorFileDoesNotExist userInfo:nil] url:url];
         return operation;
@@ -145,9 +145,9 @@
             [self safelyRemoveOperationFromRunning:operation];
             return;
         }
-
+        // 如果内存和磁盘缓存中都没有或者options要求每次刷新，然后managerDelegate没实现imageManager:shouldDownloadImageForURL:或者实现了且返回yes，说明需要从网络下载
         if ((!cachedImage || options & SDWebImageRefreshCached) && (![self.delegate respondsToSelector:@selector(imageManager:shouldDownloadImageForURL:)] || [self.delegate imageManager:self shouldDownloadImageForURL:url])) {
-            if (cachedImage && options & SDWebImageRefreshCached) {
+            if (cachedImage && options & SDWebImageRefreshCached) {// 先&再&&，如果缓存存在但options要求每次刷新
                 // If image was found in the cache but SDWebImageRefreshCached is provided, notify about the cached image
                 // AND try to re-download it in order to let a chance to NSURLCache to refresh it from server.
                 [self callCompletionBlockForOperation:weakOperation completion:completedBlock image:cachedImage data:cachedData error:nil cacheType:cacheType finished:YES url:url];
@@ -164,7 +164,7 @@
             if (options & SDWebImageHighPriority) downloaderOptions |= SDWebImageDownloaderHighPriority;
             if (options & SDWebImageScaleDownLargeImages) downloaderOptions |= SDWebImageDownloaderScaleDownLargeImages;
             
-            if (cachedImage && options & SDWebImageRefreshCached) {
+            if (cachedImage && options & SDWebImageRefreshCached) {// 先&再&&，如果缓存存在但options要求每次刷新
                 // force progressive off if image already cached but forced refreshing
                 downloaderOptions &= ~SDWebImageDownloaderProgressiveDownload;
                 // ignore image read from NSURLCache if image if cached but force refreshing
@@ -194,7 +194,7 @@
                     }
                 }
                 else {
-                    if ((options & SDWebImageRetryFailed)) {
+                    if ((options & SDWebImageRetryFailed)) {// retryFailed成功了，把url从self.failedURLs移除
                         @synchronized (self.failedURLs) {
                             [self.failedURLs removeObject:url];
                         }
@@ -233,11 +233,11 @@
                 __strong __typeof(weakOperation) strongOperation = weakOperation;
                 [self safelyRemoveOperationFromRunning:strongOperation];
             };
-        } else if (cachedImage) {
+        } else if (cachedImage) {// options没要求每次刷新，image在缓存中存在
             __strong __typeof(weakOperation) strongOperation = weakOperation;
             [self callCompletionBlockForOperation:strongOperation completion:completedBlock image:cachedImage data:cachedData error:nil cacheType:cacheType finished:YES url:url];
             [self safelyRemoveOperationFromRunning:operation];
-        } else {
+        } else {// options没要求每次刷新，image在缓存不存在，且managerDelegate不允许下载该url的图片
             // Image not in cache and download disallowed by delegate
             __strong __typeof(weakOperation) strongOperation = weakOperation;
             [self callCompletionBlockForOperation:strongOperation completion:completedBlock image:nil data:nil error:nil cacheType:SDImageCacheTypeNone finished:YES url:url];
@@ -262,7 +262,7 @@
         [self.runningOperations removeObjectsInArray:copiedOperations];
     }
 }
-
+// 是否有loadImage操作正在进行
 - (BOOL)isRunning {
     BOOL isRunning = NO;
     @synchronized (self.runningOperations) {
@@ -317,7 +317,7 @@
         _cancelBlock = [cancelBlock copy];
     }
 }
-
+// cacheOperation是NSOperation，对cacheOperation执行cancel动作，然后若cancelBlock不为空，则执行之
 - (void)cancel {
     self.cancelled = YES;
     if (self.cacheOperation) {

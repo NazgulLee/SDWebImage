@@ -16,13 +16,13 @@
 
 @interface SDWebImageDownloader () <NSURLSessionTaskDelegate, NSURLSessionDataDelegate>
 
-@property (strong, nonatomic, nonnull) NSOperationQueue *downloadQueue;
+@property (strong, nonatomic, nonnull) NSOperationQueue *downloadQueue;//NSOperationQueue
 @property (weak, nonatomic, nullable) NSOperation *lastAddedOperation;
 @property (assign, nonatomic, nullable) Class operationClass;
-@property (strong, nonatomic, nonnull) NSMutableDictionary<NSURL *, SDWebImageDownloaderOperation *> *URLOperations;
+@property (strong, nonatomic, nonnull) NSMutableDictionary<NSURL *, SDWebImageDownloaderOperation *> *URLOperations;// 存储图片url与其对应的下载operation的键值对
 @property (strong, nonatomic, nullable) SDHTTPHeadersMutableDictionary *HTTPHeaders;
 // This queue is used to serialize the handling of the network responses of all the download operation in a single queue
-@property (SDDispatchQueueSetterSementics, nonatomic, nullable) dispatch_queue_t barrierQueue;
+@property (SDDispatchQueueSetterSementics, nonatomic, nullable) dispatch_queue_t barrierQueue;//dispatch_queue_t
 
 // The session in which data tasks will run
 @property (strong, nonatomic) NSURLSession *session;
@@ -30,7 +30,7 @@
 @end
 
 @implementation SDWebImageDownloader
-
+//在SDWebImageDownloader类或实例第一次被发送消息时执行，初始化网络活动指示器
 + (void)initialize {
     // Bind SDNetworkActivityIndicator if available (download it here: http://github.com/rs/SDNetworkActivityIndicator )
     // To use it, just add #import "SDNetworkActivityIndicator.h" in addition to the SDWebImage import
@@ -44,7 +44,9 @@
         // Remove observer in case it was previously added.
         [[NSNotificationCenter defaultCenter] removeObserver:activityIndicator name:SDWebImageDownloadStartNotification object:nil];
         [[NSNotificationCenter defaultCenter] removeObserver:activityIndicator name:SDWebImageDownloadStopNotification object:nil];
-
+        // 监听下载活动开始与结束
+        // 在startActivity中增加下载计数，若下载计数大于零，则使activityIndicator处于活动状态
+        // 在stopActivity中减少下载计数，若下载计数等于零，则使activityIndicator处于静止状态
         [[NSNotificationCenter defaultCenter] addObserver:activityIndicator
                                                  selector:NSSelectorFromString(@"startActivity")
                                                      name:SDWebImageDownloadStartNotification object:nil];
@@ -102,7 +104,7 @@
     [self.session invalidateAndCancel];
     self.session = nil;
 
-    [self.downloadQueue cancelAllOperations];
+    [self.downloadQueue cancelAllOperations];//把queue中所有operation状态isCancelled设为YES，但是还是要执行这些operation，这样这些operation才知道自己被cancell了，才能把finished状态设为YES（这样依赖它的operation才能被执行），以及执行completedBlock，执行完才会从queue中移除
     SDDispatchQueueRelease(_barrierQueue);
 }
 
@@ -124,13 +126,13 @@
 }
 
 - (NSUInteger)currentDownloadCount {
-    return _downloadQueue.operationCount;
+    return _downloadQueue.operationCount;// operation执行完才会从_downloadQueue中移除，正在执行的还不会被移除
 }
 
 - (NSInteger)maxConcurrentDownloads {
-    return _downloadQueue.maxConcurrentOperationCount;
+    return _downloadQueue.maxConcurrentOperationCount;// 正在同时执行的operation的最大数量
 }
-
+// 若框架提供的SDWebImageDownloaderOperation类不能满足需求，用户可自己提供一个服从SDWebImageDownloaderOperationInterface的NSOperation子类作为一个SDWebImageDownloder实例构建下载operation的类
 - (void)setOperationClass:(nullable Class)operationClass {
     if (operationClass && [operationClass isSubclassOfClass:[NSOperation class]] && [operationClass conformsToProtocol:@protocol(SDWebImageDownloaderOperationInterface)]) {
         _operationClass = operationClass;
@@ -145,7 +147,7 @@
                                                  completed:(nullable SDWebImageDownloaderCompletedBlock)completedBlock {
     __weak SDWebImageDownloader *wself = self;
 
-    return [self addProgressCallback:progressBlock completedBlock:completedBlock forURL:url createCallback:^SDWebImageDownloaderOperation *{
+    return [self addProgressCallback:progressBlock completedBlock:completedBlock forURL:url createCallback:^SDWebImageDownloaderOperation *{// 用url及相关属性构建一个NSMutableURLRequest实例，使用这个URLRequest和self.session构建downloaderOperation实例，设置它的queuePriority和依赖，然后返回它
         __strong __typeof (wself) sself = wself;
         NSTimeInterval timeoutInterval = sself.downloadTimeout;
         if (timeoutInterval == 0.0) {
@@ -156,7 +158,7 @@
         NSURLRequestCachePolicy cachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
         if (options & SDWebImageDownloaderUseNSURLCache) {
             if (options & SDWebImageDownloaderIgnoreCachedResponse) {
-                cachePolicy = NSURLRequestReturnCacheDataDontLoad;
+                cachePolicy = NSURLRequestReturnCacheDataDontLoad;// 去现有的数据缓存中找，没找到算下载失败
             } else {
                 cachePolicy = NSURLRequestUseProtocolCachePolicy;
             }
@@ -190,7 +192,7 @@
         [sself.downloadQueue addOperation:operation];
         if (sself.executionOrder == SDWebImageDownloaderLIFOExecutionOrder) {
             // Emulate LIFO execution order by systematically adding new operations as last operation's dependency
-            [sself.lastAddedOperation addDependency:operation];
+            [sself.lastAddedOperation addDependency:operation];//若sself.lastAddedOperation已经在执行，添加依赖不产生任何作用。若还没开始执行，则使其依赖于新加入的这个operation，这样后加入的operation会先执行
             sself.lastAddedOperation = operation;
         }
 
@@ -207,7 +209,7 @@
         }
     });
 }
-
+// 从self.URLOperations获取此url对应的下载operation（若不存在则使用createCallback参数创建一个operation），把progressBlock和completedBlock作为operation封装的下载操作的progressBlocks之一和completedBlocks之一，operation本身的completedBlock是把自己从self.URLOperations移除。以url为键operation为值添加到self.URLOperations中。返回包含url和下载url内容时的progressBlock和completedBlock的SDWebImageDownloadToken
 - (nullable SDWebImageDownloadToken *)addProgressCallback:(SDWebImageDownloaderProgressBlock)progressBlock
                                            completedBlock:(SDWebImageDownloaderCompletedBlock)completedBlock
                                                    forURL:(nullable NSURL *)url
@@ -221,15 +223,15 @@
     }
 
     __block SDWebImageDownloadToken *token = nil;
-
+    //dispatch_barrier_参数中的block在到达参数queue的最前端时，要等待之前已开始执行的block执行完，然后执行自己，自己执行完后，才开始并发执行排在自己后面的block
     dispatch_barrier_sync(self.barrierQueue, ^{
         SDWebImageDownloaderOperation *operation = self.URLOperations[url];
-        if (!operation) {
+        if (!operation) {// 若此url对应的下载operation未创建，则执行createCallback()创建一个
             operation = createCallback();
             self.URLOperations[url] = operation;
 
             __weak SDWebImageDownloaderOperation *woperation = operation;
-            operation.completionBlock = ^{
+            operation.completionBlock = ^{// operation执行完后将此自己从self.URLOperations中移除
               SDWebImageDownloaderOperation *soperation = woperation;
               if (!soperation) return;
               if (self.URLOperations[url] == soperation) {
@@ -237,11 +239,13 @@
               };
             };
         }
+        // downloadOperationCancelToken其实是包含progressBlock和completedBlock的字典
         id downloadOperationCancelToken = [operation addHandlersForProgress:progressBlock completed:completedBlock];
 
         token = [SDWebImageDownloadToken new];
         token.url = url;
         token.downloadOperationCancelToken = downloadOperationCancelToken;
+        // token包含url和下载url内容时的progressBlock和completedBlock
     });
 
     return token;
@@ -256,7 +260,7 @@
 }
 
 #pragma mark Helper methods
-
+// 在downloadQueue中的operations中查找具有指定task的operation
 - (SDWebImageDownloaderOperation *)operationWithTask:(NSURLSessionTask *)task {
     SDWebImageDownloaderOperation *returnOperation = nil;
     for (SDWebImageDownloaderOperation *operation in self.downloadQueue.operations) {
@@ -268,7 +272,9 @@
     return returnOperation;
 }
 
-#pragma mark NSURLSessionDataDelegate
+//先找到dataTask对应的downloadOperation，再转交给它执行
+#pragma mark NSURLSessionDataDelegate 
+
 
 - (void)URLSession:(NSURLSession *)session
           dataTask:(NSURLSessionDataTask *)dataTask
@@ -301,6 +307,7 @@ didReceiveResponse:(NSURLResponse *)response
 }
 
 #pragma mark NSURLSessionTaskDelegate
+//除了willPerformHTTPRedirection， 全部转交给task对应的downloadOperation执行
 
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error {
     // Identify the operation that runs this task and pass it the delegate method

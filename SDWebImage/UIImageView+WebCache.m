@@ -53,7 +53,7 @@
                             progress:progressBlock
                            completed:completedBlock];
 }
-
+// 以先前缓存的图片作为placeholder去下载新的图片。以url生成key，到缓存（先内存再磁盘）中找缓存，若有，把它作为下载过程的placeholder，若无，以参数中的placeholder为placeholder。是的，还是要下载image
 - (void)sd_setImageWithPreviousCachedImageWithURL:(nullable NSURL *)url
                                  placeholderImage:(nullable UIImage *)placeholder
                                           options:(SDWebImageOptions)options
@@ -78,7 +78,7 @@
     for (NSURL *logoImageURL in arrayOfURLs) {
         id <SDWebImageOperation> operation = [SDWebImageManager.sharedManager loadImageWithURL:logoImageURL options:0 progress:nil completed:^(UIImage *image, NSData *data, NSError *error, SDImageCacheType cacheType, BOOL finished, NSURL *imageURL) {
             if (!wself) return;
-            dispatch_main_async_safe(^{
+            dispatch_main_async_safe(^{// 若已在main queue上，直接执行block；若不在main queue上，则分发到main queue上执行
                 __strong UIImageView *sself = wself;
                 [sself stopAnimating];
                 if (sself && image) {

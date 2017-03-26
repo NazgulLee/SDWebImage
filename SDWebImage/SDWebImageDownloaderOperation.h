@@ -25,7 +25,7 @@ extern NSString * _Nonnull const SDWebImageDownloadFinishNotification;
 - (nonnull instancetype)initWithRequest:(nullable NSURLRequest *)request
                               inSession:(nullable NSURLSession *)session
                                 options:(SDWebImageDownloaderOptions)options;
-
+// 可能会有对同一url的多个下载请求，但下载请求的progressBlock和completedBlock不一样，因此把它们保存起来在恰当的时候执行
 - (nullable id)addHandlersForProgress:(nullable SDWebImageDownloaderProgressBlock)progressBlock
                             completed:(nullable SDWebImageDownloaderCompletedBlock)completedBlock;
 
@@ -37,7 +37,7 @@ extern NSString * _Nonnull const SDWebImageDownloadFinishNotification;
 
 @end
 
-
+// SDWebImageOperation协议只有一个cancel方法
 @interface SDWebImageDownloaderOperation : NSOperation <SDWebImageDownloaderOperationInterface, SDWebImageOperation, NSURLSessionTaskDelegate, NSURLSessionDataDelegate>
 
 /**
@@ -117,6 +117,7 @@ extern NSString * _Nonnull const SDWebImageDownloadFinishNotification;
  *
  *  @return YES if the operation was stopped because this was the last token to be canceled. NO otherwise.
  */
+// token包含了一对progressBlock和completedBlock，因为同一url可能会有多个下载请求，每个请求有一对progressBlock和completedBlock，downloaderOperation把每对progressBlock和completedBlock保存在self.callbackBlocks中，每次取消一个请求就把这个请求对应的progressBlock和completedBlock对从self.callbackBlocks中删除，若self.callbackBlocks为空，则取消对这个url的下载
 - (BOOL)cancel:(nullable id)token;
 
 @end

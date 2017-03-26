@@ -110,7 +110,7 @@ typedef SDHTTPHeadersDictionary * _Nullable (^SDWebImageDownloaderHeadersFilterB
 /**
  * Shows the current amount of downloads that still need to be downloaded
  */
-@property (readonly, nonatomic) NSUInteger currentDownloadCount;
+@property (readonly, nonatomic) NSUInteger currentDownloadCount;//需要进行下载的下载数量
 
 
 /**
@@ -184,6 +184,7 @@ typedef SDHTTPHeadersDictionary * _Nullable (^SDWebImageDownloaderHeadersFilterB
  * @param operationClass The subclass of `SDWebImageDownloaderOperation` to set 
  *        as default. Passing `nil` will revert to `SDWebImageDownloaderOperation`.
  */
+// 框架提供的SDWebImageDownloaderOperation类不够用时，用户可自己提供一个服从SDWebImageDownloaderOperationInterface的NSOperation子类作为一个SDWebImageDownloder实例构建下载operation的类
 - (void)setOperationClass:(nullable Class)operationClass;
 
 /**
