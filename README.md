@@ -22,14 +22,14 @@ imageCache维护双级缓存：内存缓存和磁盘缓存。内存缓存用NSCa
 ### SDWebImageCache
 
 * 缓存位置：内存缓存（NSCache）和磁盘缓存（NSCachesDirectory下）。
-* 缓存内容：imageDownloader默认下载图片后解压缩，所以缓存的是解压缩的数据。也可以设置imageDownloader默认下载图片不解压缩，这样缓存的是没有解压缩的图片。一张图片是一个文件。
+* 缓存内容：imageDownloader默认下载图片后解压缩，所以缓存的是解压缩的数据。也可以设置imageDownloader默认下载图片不解压缩，这样缓存的是没有解压缩的图片。磁盘缓存中一张图片是一个文件。
 * 如何限制缓存大小：可以指定磁盘最多缓存的字节数量和图片有效期。
 * 移除策略：在收到`UIApplicationDidReceiveMemoryWarningNotification`时清理内存缓存。在进入后台后或者用户强制关闭应用时清理磁盘缓存中的过期图片，若剩下的图片占的空间超过指定的maxCacheSize，则按文件修改日期，从远到近删除，直到占的空间小于maxCacheSize的一半。在添加新缓存时不会移除其他缓存，即使占用的空间超出了上限。
 
 ### FastImageCache
 
 * 缓存位置：貌似只有磁盘缓存（NSCachesDirectory下）。内存缓存用户可以自己配置。
-* 缓存内容：缓存的是图片解压缩后的数据。一张表是一个文件。
+* 缓存内容：缓存的是图片解压缩后的数据。磁盘缓存中一张表是一个文件。
 * 如何限制缓存大小：为每张表指定imageSize和maximumCount从而限制每张表的大小。初始化imageCache时指定创建哪几张表。从而限制整个imageCache的大小。
 * 移除策略：在往某张表中加入新缓存时，若表已满，则移除一张最久没更新的图片缓存。更新包括存和取。
 
